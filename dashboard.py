@@ -8,11 +8,11 @@ from ultralytics import YOLO
 import time
 
 # ============================================================
-# PEL REFRIGERATOR AI QUALITY INSPECTION SYSTEM
+# FRIDGEGUARD AI — REFRIGERATOR QUALITY INSPECTION SYSTEM
 # ============================================================
 
 st.set_page_config(
-    page_title="PEL | Refrigerator Final Quality Inspection",
+    page_title="FridgeGuard AI | Refrigerator Quality Inspection",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -140,7 +140,7 @@ with st.sidebar:
     try:
         st.image("Screenshot 2026-08-18 163605.png", use_container_width=True)
     except Exception:
-        st.markdown("## PEL")
+        st.markdown("## FridgeGuard AI")
 
     st.markdown("---")
     st.markdown("### Appearance")
@@ -352,7 +352,7 @@ left, right = st.columns([5, 1])
 with left:
     st.markdown(
         '<div class="app-header">'
-        '<div class="header-title">Refrigerator Final Quality Inspection</div>'
+        '<div class="header-title">FridgeGuard AI</div>'
         '<div class="header-subtitle">Automated Visual Assembly Verification & Quality Control</div>'
         '</div>',
         unsafe_allow_html=True
@@ -554,7 +554,7 @@ with tab_analytics:
             st.download_button(
                 "Download CSV Report",
                 data=csv,
-                file_name=f"PEL_QA_Report_{datetime.now().strftime('%Y%m%d')}.csv",
+                file_name=f"FridgeGuard_AI_QA_Report_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
