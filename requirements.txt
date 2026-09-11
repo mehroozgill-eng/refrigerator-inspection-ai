@@ -1,5 +1,7 @@
 streamlit>=1.38.0
 ultralytics-opencv-headless
+streamlit-webrtc>=0.47.9
+av>=12.0.0
 pandas>=2.0.0
 numpy>=1.26.0
 Pillow>=10.0.0
