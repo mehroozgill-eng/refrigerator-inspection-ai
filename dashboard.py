@@ -411,6 +411,10 @@ with tab_live:
             video_processor_factory=lambda: InspectionVideoProcessor(
                 conf_threshold, iou_threshold
             ),
+            # Required for browser-camera connections to a cloud-hosted app.
+            rtc_configuration={
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            },
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True,
         )
