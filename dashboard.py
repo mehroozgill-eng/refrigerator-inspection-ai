@@ -1,11 +1,14 @@
 import cv2
+import av
 import streamlit as st
 import pandas as pd
 import numpy as np
 from PIL import Image
 from datetime import datetime
 from ultralytics import YOLO
+from streamlit_webrtc import VideoProcessorBase, WebRtcMode, webrtc_streamer
 import time
+import threading
 
 # ============================================================
 # FRIDGEGUARD AI — REFRIGERATOR QUALITY INSPECTION SYSTEM
@@ -185,6 +188,7 @@ def load_model():
     return YOLO("best.pt")
 
 model = load_model()
+MODEL_LOCK = threading.Lock()
 
 REQUIRED_PARTS = {
     "glass_shelves": 6,
@@ -200,12 +204,15 @@ REQUIRED_PARTS = {
 # ============================================================
 def analyze_image(image_array, conf_thresh, iou_thresh):
     start = time.perf_counter()
-    results = model.predict(
-        source=image_array,
-        conf=conf_thresh,
-        iou=iou_thresh,
-        verbose=False
-    )
+    # The live camera callback and image-upload workflow can run at the same time.
+    # A lock prevents concurrent access to the shared YOLO model.
+    with MODEL_LOCK:
+        results = model.predict(
+            source=image_array,
+            conf=conf_thresh,
+            iou=iou_thresh,
+            verbose=False
+        )
     inference_ms = (time.perf_counter() - start) * 1000
 
     result = results[0]
@@ -252,6 +259,27 @@ def analyze_image(image_array, conf_thresh, iou_thresh):
         "avg_confidence": avg_conf,
         "inference_ms": inference_ms,
     }
+
+
+class InspectionVideoProcessor(VideoProcessorBase):
+    """Runs FridgeGuard AI inference on each browser-camera frame."""
+
+    def __init__(self, conf_thresh, iou_thresh):
+        self.conf_thresh = conf_thresh
+        self.iou_thresh = iou_thresh
+        self.latest_result = None
+
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        # WebRTC frames arrive as BGR images; the dashboard model pipeline uses RGB.
+        frame_bgr = frame.to_ndarray(format="bgr24")
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        self.latest_result = analyze_image(
+            frame_rgb, self.conf_thresh, self.iou_thresh
+        )
+        annotated_bgr = cv2.cvtColor(
+            self.latest_result["annotated"], cv2.COLOR_RGB2BGR
+        )
+        return av.VideoFrame.from_ndarray(annotated_bgr, format="bgr24")
 
 
 def build_report_dataframe(result):
@@ -376,49 +404,23 @@ with tab_live:
     col_video, col_diag = st.columns([2.2, 1], gap="large")
 
     with col_video:
-        run_camera = st.toggle("Activate Live Camera", key="cam_toggle")
-        video_placeholder = st.empty()
+        st.caption("Start the browser camera to run continuous, frame-by-frame AI detection.")
+        webrtc_ctx = webrtc_streamer(
+            key="fridgeguard-live-camera",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=lambda: InspectionVideoProcessor(
+                conf_threshold, iou_threshold
+            ),
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
 
     with col_diag:
         st.markdown("#### Assembly Diagnostics")
-        status_placeholder = st.empty()
-        metrics_placeholder = st.empty()
-        table_placeholder = st.empty()
-
-    if run_camera:
-        st.caption("Capture an inspection image with your browser camera. This works both locally and on Streamlit Cloud.")
-        camera_image = st.camera_input("Capture refrigerator interior")
-        if camera_image is not None:
-            image_array = np.array(Image.open(camera_image).convert("RGB"))
-            with st.spinner("Running AI assembly verification..."):
-                result = analyze_image(image_array, conf_threshold, iou_threshold)
-            video_placeholder.image(result["annotated"], channels="RGB", use_container_width=True)
-
-            with status_placeholder.container():
-                status_card(result)
-
-            with metrics_placeholder.container():
-                a, b = st.columns(2)
-                with a:
-                    kpi_card("Verified", f'{result["total_verified"]}/{result["total_expected"]}')
-                with b:
-                    kpi_card("Confidence", f'{result["avg_confidence"] * 100:.1f}%')
-                c, d = st.columns(2)
-                with c:
-                    kpi_card("Detected", result["total_detected"])
-                with d:
-                    kpi_card("Inference", f'{result["inference_ms"]:.0f} ms')
-
-            with table_placeholder.container():
-                st.dataframe(
-                    build_report_dataframe(result).drop(columns=["_class_name"]),
-                    hide_index=True,
-                    use_container_width=True,
-                    height=250
-                )
-    else:
-        video_placeholder.info("Camera offline. Activate the live camera to begin inspection.")
-        with status_placeholder.container():
+        if webrtc_ctx.state.playing:
+            st.success("Live camera is active. Bounding boxes and labels update on the video feed.")
+            st.info("For the full component report and downloadable record, use Image Inspection.")
+        else:
             status_card()
 
 # ============================================================
